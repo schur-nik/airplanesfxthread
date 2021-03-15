@@ -11,18 +11,24 @@ import javafx.fxml.FXML;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
-import javafx.scene.control.Button;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.AnchorPane;
 import javafx.util.Duration;
+import javafx.util.converter.IntegerStringConverter;
+
+import java.util.function.UnaryOperator;
 
 public class MainController {
     private LineChart<Number, Number> chart;
     private Boolean startActionBoolean = false;
     private XYChart.Series sr = new XYChart.Series();
-    private Double posPlane1;
-    private Double posPlane2;
+    private XYChart.Series sr2 = new XYChart.Series();
+    private Double speedOne;
+    private Double speedTwo;
+    private Double timer = 0.00;
+    private Thread thread;
+    private int tempV = 1;
 
     @FXML
     private Button btnStart;
@@ -46,81 +52,112 @@ public class MainController {
     private ImageView plane2;
 
     @FXML
+    private Label timerLabel;
+
+
+    @FXML
     void btnResetAction(ActionEvent event) {
+        btnStart.setText("START");
         startActionBoolean = false;
-        System.out.println(plane1.getLayoutX());
-        System.out.println(chart);
+        thread.stop();
+        sr.getData().remove(1);
+        sr2.getData().remove(1);
+        timer = 0.00;
+        timerLabel.setText(String.format("%.2f", timer));
+        plane1.setLayoutX(0);
+        plane2.setLayoutX(0);
+        tempV = 1;
+    }
+
+    private void showAlertWithoutHeaderText(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 
     @FXML
     void btnStartAction(ActionEvent event) {
-        startActionBoolean = true;
-        Double speedOne = Double.valueOf(fieldAirOne.getText());
-        Double speedTwo = Double.valueOf(fieldAirTwo.getText());
-        Task taskUpdate = new Task<Void>() {
-            @Override
-            public Void call() throws InterruptedException {
-                while (startActionBoolean) {
-                    while (plane1.getLayoutX() < posPlane1) {
-                        System.out.println(plane1.getLayoutX());
-                        plane1.setLayoutX(plane1.getLayoutX() + speedOne / 50);
-                        plane2.setLayoutX(plane2.getLayoutX() + speedTwo / 50);
-                        Thread.currentThread().sleep(20);
-                    }
-                }
-                return null;
-            }
-        };
-        Task taskOneSec = new Task<Void>() {
-            @Override
-            public Void call() throws InterruptedException {
-                while (startActionBoolean) {
-                    posPlane1 = posPlane1+speedOne;
-                    posPlane2 = posPlane2+speedTwo;
-                    Thread.currentThread().sleep(1000);
-                }
-                return null;
-            }
-        };
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                Runnable updater = new Runnable() {
+        if (fieldAirOne.getText().equals("") || fieldAirTwo.getText().equals("")) {
+            showAlertWithoutHeaderText("ERROR", "Enter right speed for Airplane 1 and Airplane 2.");
+        }
+        else {
+            if (startActionBoolean) {
+                btnStart.setText("START");
+                startActionBoolean = false;
+                showAlertWithoutHeaderText("End of flight", "Flight distance Airplane 1 = " +
+                        String.format("%.2f", plane1.getLayoutX()) + "\nFlight distance Airplane 2 = " + String.format("%.2f", plane2.getLayoutX()));
+            } else {
+                btnStart.setText("STOP");
+                startActionBoolean = true;
+                speedOne = Double.valueOf(fieldAirOne.getText());
+                speedTwo = Double.valueOf(fieldAirTwo.getText());
+                thread = new Thread(new Runnable() {
                     @Override
                     public void run() {
-                            sr.getData().remove(1);
-                            sr.getData().add(new XYChart.Data(plane1.getLayoutX(), 25));
-                            System.out.println(sr.getData());
+                        Runnable updater = new Runnable() {
+                            @Override
+                            public void run() {
+                                if (plane1.getLayoutX() < 700 && plane2.getLayoutX() < 700) {
+                                    timer += 0.02;
+                                    timerLabel.setText(String.format("%.2f", timer));
+                                    plane1.setLayoutX(plane1.getLayoutX() + speedOne / 50);
+                                    plane2.setLayoutX(plane2.getLayoutX() + speedTwo / 50);
+                                    if (sr.getData().size() == 2 && sr2.getData().size() == 2) {
+                                        sr.getData().remove(1);
+                                        sr2.getData().remove(1);
+                                    }
+                                    sr.getData().add(new XYChart.Data(plane1.getLayoutX(), 25));
+                                    sr2.getData().add(new XYChart.Data(plane2.getLayoutX(), 15));
+                                } else {
+                                    startActionBoolean = false;
+                                    if (tempV == 1) {
+                                        showAlertWithoutHeaderText("End of flight(end distance)", "Flight distance Airplane 1 = "
+                                                + String.format("%.2f", plane1.getLayoutX()) + "\nFlight distance Airplane 2 = "
+                                                + String.format("%.2f", plane2.getLayoutX()));
+                                        tempV++;
+                                    }
+                                }
+                            }
+                        };
+                        while (startActionBoolean) {
+                            try {
+                                Thread.sleep(20);
+                            } catch (InterruptedException ex) {
+                            }
+                            Platform.runLater(updater);
+                        }
                     }
-                };
-                while (startActionBoolean) {
-                    try {
-                        Thread.sleep(20);
-                    } catch (InterruptedException ex) {}
-                    Platform.runLater(updater);
-                }
+                });
+                thread.setDaemon(true);
+                thread.start();
             }
-        });
-        thread.setDaemon(true);
-        thread.start();
-        new Thread(taskOneSec).start();
-        new Thread(taskUpdate).start();
-
+        }
     }
+
+    UnaryOperator<TextFormatter.Change> integerFilter = change -> {
+        String input = change.getText();
+        if (input.matches("[0-9]*")) {
+            return change;
+        }
+        return null;
+    };
 
     @FXML
     void initialize() {
-        posPlane1 = 0.0;
-        posPlane2 = 0.0;
-        chart = new LineChart<Number, Number>(new NumberAxis(0,770, 25), new NumberAxis(0, 30, 0));
+        fieldAirOne.setTextFormatter(new TextFormatter<>(new IntegerStringConverter()));
+        fieldAirTwo.setTextFormatter(new TextFormatter<>(new IntegerStringConverter()));
+        timerLabel.setText("0.0");
+        chart = new LineChart<Number, Number>(new NumberAxis(0,700, 25), new NumberAxis(0, 30, 0));
         chart.setAnimated(false);
-        chart.setMaxSize(770, 210);
-        chart.setPrefSize(770, 210);
+        chart.setMaxSize(700, 210);
+        chart.setPrefSize(700, 210);
         chart.setLegendVisible(false);
         sr.getData().add(new XYChart.Data( 0, 25));
-        sr.getData().add(new XYChart.Data( 0, 25));
-        //sr.getData().add(new XYChart.Data( 0, 75));
         chart.getData().add(sr);
+        sr2.getData().add(new XYChart.Data( 0, 15));
+        chart.getData().add(sr2);
         paneAirGraph.getChildren().add(0, chart);
     }
 
